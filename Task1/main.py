@@ -1,25 +1,22 @@
 import sqlite3
 from multiprocessing import Pool
+from rule_engine import apply_rules
 
 def setup_database():
     conn = sqlite3.connect("data.db")
     cursor = conn.cursor()
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sample_table(
-        id INTEGER PRIMARY KEY,
-        name TEXT
+    CREATE TABLE IF NOT EXISTS chunk_results(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word_count INTEGER,
+        status TEXT
     )
     """)
 
-    data = ['Madhu', 'Python', 'Parallel', 'Text', 'Processor']
-
-    for item in data:
-        cursor.execute("INSERT INTO sample_table(name) VALUES(?)", (item,))
-
     conn.commit()
     conn.close()
-    print("Database setup completed")
+    print("Database ready")
 
 def load_file():
     try:
@@ -33,21 +30,42 @@ def load_file():
 
 
 def process_chunk(chunk):
-    return len(chunk)
+    return apply_rules(chunk)
+
+
+def save_to_db(results):
+    conn = sqlite3.connect("data.db")
+    cursor = conn.cursor()
+
+    for r in results:
+        cursor.execute(
+            "INSERT INTO chunk_results(word_count,status) VALUES(?,?)",
+            (r["words"], r["status"])
+        )
+
+    conn.commit()
+    conn.close()
+    print("Results stored in database")
 
 
 if __name__ == "__main__":
+
     setup_database()
+
     text = load_file()
 
-    lines = text.split("\n")
+    if not text:
+        print("No data to process")
+        exit()
+
     text = text.lower()
+    lines = text.split("\n")
     words = text.split()
 
     print("Total lines:", len(lines))
     print("Total words:", len(words))
 
-    chunk_size = 100
+    chunk_size = 10
     chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
 
     print("Total chunks:", len(chunks))
@@ -55,5 +73,22 @@ if __name__ == "__main__":
     with Pool(2) as p:
         result = p.map(process_chunk, chunks)
 
-    print("Parallel output:", result)
+    print("\n===== Chunk Processing Summary =====")
 
+    large_count = 0
+    small_count = 0
+
+    for i, r in enumerate(result, 1):
+        print(f"Chunk {i:02d} | Words: {r['words']:4d} | Status: {r['status']}")
+
+        if r["status"] == "LARGE":
+            large_count += 1
+        elif r["status"] == "SMALL":
+            small_count += 1
+
+    print("====================================")
+
+    print(f"Total LARGE chunks : {large_count}")
+    print(f"Total SMALL chunks : {small_count}\n")
+
+    save_to_db(result)
