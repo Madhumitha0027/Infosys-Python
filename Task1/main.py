@@ -92,3 +92,4 @@ if __name__ == "__main__":
     print(f"Total SMALL chunks : {small_count}\n")
 
     save_to_db(result)
+
